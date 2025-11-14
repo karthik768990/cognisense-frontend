@@ -21,45 +21,17 @@ const Settings = () => {
     weeklyReport: true,
   });
 
-  const [theme, setTheme] = useState('Dark');
   const [fontSize, setFontSize] = useState(16);
   const [showAddWebsite, setShowAddWebsite] = useState(false);
   const [newWebsiteName, setNewWebsiteName] = useState('');
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      setTheme('Dark');
-    } else if (savedTheme === 'light') {
-      setTheme('Light');
-    }
-
     const savedFontSize = parseInt(localStorage.getItem('fontSize'), 10);
     if (!Number.isNaN(savedFontSize) && savedFontSize >= 12 && savedFontSize <= 20) {
       setFontSize(savedFontSize);
       document.documentElement.style.fontSize = `${savedFontSize}px`;
     }
   }, []);
-
-  const applyTheme = (themeOption) => {
-    let effectiveTheme = themeOption;
-
-    if (themeOption === 'Auto' && window.matchMedia) {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      effectiveTheme = prefersDark ? 'Dark' : 'Light';
-    }
-
-    setTheme(themeOption);
-
-    const isDark = effectiveTheme === 'Dark';
-    const themeValue = isDark ? 'dark' : 'light';
-
-    localStorage.setItem('theme', themeValue);
-    document.documentElement.classList.toggle('light', !isDark);
-    document.body.style.backgroundColor = isDark ? '#0f1419' : '#f3f4f6';
-
-    window.dispatchEvent(new CustomEvent('df-theme-change', { detail: themeValue }));
-  };
 
   const handleFontSizeChange = (event) => {
     const newSize = Number(event.target.value);
@@ -226,30 +198,11 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* Theme Settings */}
+      {/* Accessibility */}
       <div className="bg-[#1a1f2e] rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-gray-100 mb-6">Theme Settings</h2>
+        <h2 className="text-xl font-semibold text-gray-100 mb-6">Accessibility</h2>
         
         <div className="space-y-4">
-          <div>
-            <p className="text-gray-400 text-sm mb-3">Appearance</p>
-            <div className="flex gap-3">
-              {['Light', 'Dark', 'Auto'].map((themeOption) => (
-                <button
-                  key={themeOption}
-                  onClick={() => applyTheme(themeOption)}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    theme === themeOption
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-[#2d3748] text-gray-400 hover:bg-gray-700'
-                  }`}
-                >
-                  {themeOption}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div>
             <p className="text-gray-400 text-sm mb-3">Font Size</p>
             <input
