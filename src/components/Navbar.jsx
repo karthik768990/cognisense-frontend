@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Activity, Moon, Sun, Bell, User } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 const Navbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [user, setUser] = useState(null);
+  const [avatarError, setAvatarError] = useState(false);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
   
   const navItems = [
     { path: '/', label: 'Dashboard' },
@@ -22,6 +27,43 @@ const Navbar = () => {
     }
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!mounted) return;
+      setUser(user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showSignOutModal) return;
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setShowSignOutModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showSignOutModal]);
+
   // Toggle theme
   const toggleTheme = () => {
     const newTheme = !isDarkMode;
@@ -36,6 +78,37 @@ const Navbar = () => {
       document.body.style.backgroundColor = '#f3f4f6';
     }
   };
+
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    (user?.email ? user.email.split('@')[0] : '');
+
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
+
+  useEffect(() => {
+    // Reset avatar error state when the avatar URL changes
+    setAvatarError(false);
+  }, [avatarUrl]);
+
+  const handleOpenSignOutModal = () => {
+    setShowSignOutModal(true);
+  };
+
+  const handleCloseSignOutModal = () => {
+    setShowSignOutModal(false);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setShowSignOutModal(false);
+    navigate('/auth');
+  };
+
+  // Hide navbar on auth page
+  if (location.pathname === '/auth') {
+    return null;
+  }
 
   return (
     <nav className={`bg-[${isDarkMode ? '#1a1f2e' : '#f9fafb'}] border-b border-gray-800`}>
@@ -84,12 +157,61 @@ const Navbar = () => {
             <button className="p-2 text-gray-400 hover:text-gray-200 transition-colors">
               <Bell className="w-5 h-5" />
             </button>
-            <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">
-              <User className="w-5 h-5" />
-            </div>
+            <button
+              onClick={handleOpenSignOutModal}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+            >
+              <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center overflow-hidden">
+                {avatarUrl && !avatarError ? (
+                  <img
+                    src={avatarUrl}
+                    alt={displayName || 'User avatar'}
+                    className="w-full h-full object-cover"
+                    onError={() => setAvatarError(true)}
+                  />
+                ) : displayName ? (
+                  <span className="text-xs font-semibold">
+                    {displayName.charAt(0).toUpperCase()}
+                  </span>
+                ) : (
+                  <User className="w-4 h-4" />
+                )}
+              </div>
+              <span>Sign out</span>
+            </button>
           </div>
         </div>
       </div>
+      {showSignOutModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={handleCloseSignOutModal}
+        >
+          <div
+            className="bg-[#111827] border border-gray-700 rounded-xl shadow-2xl max-w-sm w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-gray-100 mb-2">Sign out</h2>
+            <p className="text-gray-400 text-sm mb-6">
+              Are you sure you want to sign out of Digital Footprint?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={handleCloseSignOutModal}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-700 hover:bg-gray-600 text-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-700 text-white transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

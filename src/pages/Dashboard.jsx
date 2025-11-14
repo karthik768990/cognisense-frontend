@@ -1,7 +1,12 @@
 import { Clock, TrendingUp, TrendingDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-const Dashboard = () => {
+const Dashboard = ({ user }) => {
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    (user?.email ? user.email.split('@')[0] : '');
+
   const weeklyData = [
     { day: 'Mon', Productive: 150, Social: 100, Entertainment: 80 },
     { day: 'Tue', Productive: 180, Social: 120, Entertainment: 100 },
@@ -48,7 +53,16 @@ const Dashboard = () => {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-100 mb-2">Dashboard</h1>
-        <p className="text-gray-400">Welcome back! Here's your digital footprint summary.</p>
+        <p className="text-gray-400">
+          Welcome back
+          {displayName && (
+            <>
+              ,{' '}
+              <span className="font-semibold text-gray-100">{displayName}</span>
+            </>
+          )}
+          ! Here's your digital footprint summary.
+        </p>
       </div>
 
       {/* Metrics Grid */}
