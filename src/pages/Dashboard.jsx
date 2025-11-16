@@ -1,52 +1,108 @@
-import { Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { supabase } from '../supabaseClient';
+
+const API_BASE_URL = 'https://cognisense-backend.onrender.com/api/v1';
 
 const Dashboard = ({ user }) => {
+  const [metrics, setMetrics] = useState([]);
+  const [weeklyData, setWeeklyData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const displayName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
     (user?.email ? user.email.split('@')[0] : '');
 
-  const weeklyData = [
-    { day: 'Mon', Productive: 150, Social: 100, Entertainment: 80 },
-    { day: 'Tue', Productive: 180, Social: 120, Entertainment: 100 },
-    { day: 'Wed', Productive: 200, Social: 150, Entertainment: 120 },
-    { day: 'Thu', Productive: 280, Social: 180, Entertainment: 200 },
-    { day: 'Fri', Productive: 150, Social: 120, Entertainment: 180 },
-    { day: 'Sat', Productive: 100, Social: 180, Entertainment: 250 },
-    { day: 'Sun', Productive: 80, Social: 150, Entertainment: 240 },
-  ];
+  const formatSeconds = (seconds) => {
+    if (!seconds || seconds <= 0) return '0m';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.round((seconds % 3600) / 60);
+    if (hours === 0) return `${minutes}m`;
+    return `${hours}h ${minutes}m`;
+  };
 
-  const metrics = [
-    {
-      title: 'Total Screen Time',
-      value: '8h 7m',
-      change: '↑ 12% vs yesterday',
-      trend: 'up',
-      color: 'border-blue-500',
-    },
-    {
-      title: 'Productive Time',
-      value: '3h 54m',
-      change: '↑ 15% vs yesterday',
-      trend: 'up',
-      color: 'border-green-500',
-    },
-    {
-      title: 'Social Media',
-      value: '1h 40m',
-      change: '↓ 8% vs yesterday',
-      trend: 'down',
-      color: 'border-purple-500',
-    },
-    {
-      title: 'Entertainment',
-      value: '2h 33m',
-      change: '↑ 5% vs yesterday',
-      trend: 'up',
-      color: 'border-orange-500',
-    },
-  ];
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDashboard = async () => {
+      try {
+        const { data: { session } = {} } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          setError('Missing auth token');
+          return;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/dashboard?timeRange=this_week`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(`Dashboard request failed with ${res.status}`);
+        }
+
+        const json = await res.json();
+        if (!mounted) return;
+
+        setMetrics(json.metrics || []);
+        setWeeklyData(json.weeklyData || []);
+      } catch (err) {
+        if (!mounted) return;
+        console.error('Dashboard load error', err);
+        setError(err.message || 'Failed to load dashboard');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const metricColorMap = {
+    'Total Time': 'border-blue-500',
+    'Productive Time': 'border-green-500',
+    'Social Time': 'border-purple-500',
+    'Entertainment Time': 'border-orange-500',
+  };
+
+  const formattedMetrics = metrics.map((metric) => ({
+    title: metric.title,
+    value: formatSeconds(metric.value),
+    change: `${metric.change_percent >= 0 ? '↑' : '↓'} ${Math.abs(metric.change_percent || 0)}% vs last period`,
+    trend: metric.trend,
+    color: metricColorMap[metric.title] || 'border-blue-500',
+  }));
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-100 mb-2">Dashboard</h1>
+          <p className="text-gray-400">Loading your dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-100 mb-2">Dashboard</h1>
+          <p className="text-red-400 text-sm">Failed to load dashboard: {error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -67,7 +123,7 @@ const Dashboard = ({ user }) => {
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-        {metrics.map((metric, index) => (
+        {formattedMetrics.map((metric, index) => (
           <div
             key={index}
             className={`bg-[#1a1f2e] rounded-lg p-6 border-l-4 ${metric.color} relative`}

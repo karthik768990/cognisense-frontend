@@ -1,29 +1,79 @@
+import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { supabase } from '../supabaseClient';
+
+const API_BASE_URL = 'https://cognisense-backend.onrender.com/api/v1';
 
 const Analytics = () => {
-  const weeklyData = [
-    { day: 'Mon', productive: 3, distracting: 2.5 },
-    { day: 'Tue', productive: 3.5, distracting: 2 },
-    { day: 'Wed', productive: 3.2, distracting: 2.8 },
-    { day: 'Thu', productive: 4, distracting: 4 },
-    { day: 'Fri', productive: 2.8, distracting: 3.5 },
-    { day: 'Sat', productive: 2, distracting: 5 },
-    { day: 'Sun', productive: 1.5, distracting: 5.5 },
-  ];
+  const [weeklyData, setWeeklyData] = useState([]);
+  const [heatmapData, setHeatmapData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const heatmapData = [];
   const hours = ['0:00', '1:00', '2:00', '3:00', '4:00', '5:00', '6:00', '7:00', '8:00', '9:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'];
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  
-  for (let hour of hours) {
-    for (let day of days) {
-      heatmapData.push({
-        hour,
-        day,
-        intensity: Math.floor(Math.random() * 5),
-      });
-    }
-  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadAnalytics = async () => {
+      try {
+        const { data: { session } = {} } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          setError('Missing auth token');
+          return;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/dashboard?timeRange=this_week`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(`Dashboard request failed with ${res.status}`);
+        }
+
+        const json = await res.json();
+        if (!mounted) return;
+
+        const apiWeekly = json.weeklyData || [];
+        const mappedWeekly = apiWeekly.map((day) => ({
+          day: day.day,
+          // Treat dashboard "Productive" as productive units
+          productive: day.Productive,
+          // Combine Social + Entertainment as a simple "distracting" metric
+          distracting: (day.Social || 0) + (day.Entertainment || 0),
+        }));
+
+        setWeeklyData(mappedWeekly);
+
+        const generatedHeatmap = [];
+        for (const hour of hours) {
+          for (const d of days) {
+            generatedHeatmap.push({
+              hour,
+              day: d,
+              intensity: Math.floor(Math.random() * 5),
+            });
+          }
+        }
+        setHeatmapData(generatedHeatmap);
+      } catch (err) {
+        if (!mounted) return;
+        setError(err.message || 'Failed to load analytics');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadAnalytics();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const getIntensityColor = (intensity) => {
     const colors = ['#1e293b', '#1e40af', '#3b82f6', '#60a5fa', '#93c5fd'];

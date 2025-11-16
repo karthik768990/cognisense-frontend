@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { supabase } from '../supabaseClient';
+
+const API_BASE_URL = 'https://cognisense-backend.onrender.com/api/v1';
 
 const Settings = () => {
   const [websites, setWebsites] = useState([
@@ -31,6 +34,49 @@ const Settings = () => {
       setFontSize(savedFontSize);
       document.documentElement.style.fontSize = `${savedFontSize}px`;
     }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadWebsites = async () => {
+      try {
+        const { data: { session } = {} } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          return;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/dashboard/settings`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          return;
+        }
+
+        const json = await res.json();
+        if (!mounted) return;
+
+        const sites = (json.websites || []).map((site) => ({
+          name: site.name,
+          category: site.category || 'Other',
+          limit: site.limit ?? null,
+        }));
+
+        setWebsites(sites);
+      } catch (e) {
+        if (!mounted) return;
+      }
+    };
+
+    loadWebsites();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleFontSizeChange = (event) => {

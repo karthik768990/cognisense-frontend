@@ -1,70 +1,165 @@
+import { useEffect, useState } from 'react';
 import { AlertTriangle, TrendingUp, Grid, MessageSquare } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { supabase } from '../supabaseClient';
+
+const API_BASE_URL = 'https://cognisense-backend.onrender.com/api/v1';
 
 const Insights = () => {
-  const emotionalBalanceData = [
-    { name: 'Positive', value: 45, color: '#10b981' },
-    { name: 'Neutral', value: 30, color: '#6b7280' },
-    { name: 'Negative', value: 15, color: '#ef4444' },
-    { name: 'Biased', value: 10, color: '#f59e0b' },
-  ];
+  const [summary, setSummary] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [weeklyProgress, setWeeklyProgress] = useState([]);
+  const [emotionalSegments, setEmotionalSegments] = useState([]);
+  const [balanceScore, setBalanceScore] = useState(null);
+  const [contentCategories, setContentCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const contentCategories = [
-    { name: 'Technology', percentage: 35, color: 'bg-blue-500' },
-    { name: 'Entertainment', percentage: 25, color: 'bg-orange-500' },
-    { name: 'News', percentage: 18, color: 'bg-red-500' },
-    { name: 'Social', percentage: 15, color: 'bg-purple-500' },
-    { name: 'Other', percentage: 7, color: 'bg-gray-500' },
-  ];
+  useEffect(() => {
+    let mounted = true;
 
-  const alerts = [
-    {
+    const loadInsights = async () => {
+      try {
+        const { data: { session } = {} } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          setError('Missing auth token');
+          return;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/dashboard/insights?timeRange=this_week`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(`Insights request failed with ${res.status}`);
+        }
+
+        const json = await res.json();
+        if (!mounted) return;
+
+        setSummary(json.summary || null);
+        setAlerts(json.alerts || []);
+        setWeeklyProgress(json.weeklyProgress || []);
+
+        const eb = json.emotionalBalance || {};
+        setEmotionalSegments(eb.segments || []);
+        setBalanceScore(eb.balanceScore ?? null);
+
+        setContentCategories(json.contentCategories || []);
+      } catch (err) {
+        if (!mounted) return;
+        setError(err.message || 'Failed to load insights');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadInsights();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const emotionalBalanceData = emotionalSegments.map((segment) => {
+    const colorMap = {
+      positive: '#10b981',
+      neutral: '#6b7280',
+      negative: '#ef4444',
+      biased: '#f59e0b',
+    };
+
+    return {
+      name: segment.type
+        ? segment.type.charAt(0).toUpperCase() + segment.type.slice(1)
+        : '',
+      value: segment.value,
+      color: colorMap[segment.type] || '#6b7280',
+    };
+  });
+
+  const categoryColorMap = {
+    technology: 'bg-blue-500',
+    entertainment: 'bg-orange-500',
+    news: 'bg-red-500',
+    social: 'bg-purple-500',
+    other: 'bg-gray-500',
+  };
+
+  const categoryItems = contentCategories.map((category) => ({
+    name: category.category
+      ? category.category.charAt(0).toUpperCase() + category.category.slice(1)
+      : '',
+    percentage: category.percentage,
+    color: categoryColorMap[category.category] || 'bg-gray-500',
+  }));
+
+  const alertStyleMap = {
+    warning: {
       icon: AlertTriangle,
-      title: 'Negative Content Alert',
-      description: 'Your negative content consumption increased by 8% this week. Consider diversifying your sources.',
       color: 'border-red-500',
       bgColor: 'bg-red-500/10',
       buttonColor: 'bg-red-500 hover:bg-red-600',
-      buttonText: 'Learn More',
     },
-    {
+    info: {
       icon: Grid,
-      title: 'Content Bubble Detected',
-      description: "You've been in a tech content bubble. Try exploring other topics for a balanced perspective.",
       color: 'border-purple-500',
       bgColor: 'bg-purple-500/10',
       buttonColor: 'bg-yellow-500 hover:bg-yellow-600',
-      buttonText: 'Explore Topics',
     },
-    {
+    success: {
       icon: TrendingUp,
-      title: 'Great Progress!',
-      description: 'Great job! Your productive screen time increased by 15% compared to last week.',
       color: 'border-green-500',
       bgColor: 'bg-green-500/10',
       buttonColor: 'bg-green-500 hover:bg-green-600',
-      buttonText: 'View Details',
     },
-    {
-      icon: MessageSquare,
-      title: 'Social Media Limit',
-      description: 'Your social media usage is 22% above your target. Consider setting app limits.',
-      color: 'border-blue-500',
-      bgColor: 'bg-blue-500/10',
-      buttonColor: 'bg-blue-500 hover:bg-blue-600',
-      buttonText: 'Set Limit',
-    },
-  ];
+  };
 
-  const weeklyProgress = [
-    { label: 'Reduce Social Media Time', progress: 65, color: 'bg-blue-500' },
-    { label: 'Increase Productive Hours', progress: 80, color: 'bg-green-500' },
-    { label: 'Diversify Content Sources', progress: 45, color: 'bg-purple-500' },
-  ];
+  const styledAlerts = alerts.map((alert) => {
+    const style = alertStyleMap[alert.type] || alertStyleMap.info;
+    return {
+      ...style,
+      title: alert.title,
+      description: alert.description,
+      buttonText: 'Learn More',
+    };
+  });
+
+  const progressColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500'];
+
+  const progressItems = weeklyProgress.map((goal, index) => ({
+    label: goal.label,
+    progress: goal.progressPercent,
+    color: progressColors[index % progressColors.length],
+  }));
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-100 mb-2">Insights & Suggestions</h1>
+          <p className="text-gray-400 text-sm">Loading your insights...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-100 mb-2">Insights & Suggestions</h1>
+          <p className="text-red-400 text-sm">Failed to load insights: {error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-100 mb-2">Insights & Suggestions</h1>
         <p className="text-gray-400">Personalized recommendations based on your digital footprint.</p>
@@ -75,15 +170,15 @@ const Insights = () => {
         <h2 className="text-2xl font-bold text-gray-100 mb-6">Your Digital Footprint Summary</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
           <div>
-            <p className="text-5xl font-bold text-gray-100 mb-2">72/100</p>
+            <p className="text-5xl font-bold text-gray-100 mb-2">{`${summary?.overallHealthScore ?? 0}/100`}</p>
             <p className="text-blue-100">Overall Health Score</p>
           </div>
           <div>
-            <p className="text-5xl font-bold text-gray-100 mb-2">48%</p>
+            <p className="text-5xl font-bold text-gray-100 mb-2">{`${summary?.productiveTimeRatio ?? 0}%`}</p>
             <p className="text-blue-100">Productive Time Ratio</p>
           </div>
           <div>
-            <p className="text-5xl font-bold text-gray-100 mb-2">+15%</p>
+            <p className="text-5xl font-bold text-gray-100 mb-2">{`+${summary?.weeklyImprovementPercent ?? 0}%`}</p>
             <p className="text-blue-100">Weekly Improvement</p>
           </div>
         </div>
@@ -91,7 +186,7 @@ const Insights = () => {
 
       {/* Alerts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {alerts.map((alert, index) => (
+        {styledAlerts.map((alert, index) => (
           <div
             key={index}
             className={`bg-[#1a1f2e] rounded-lg p-6 border-l-4 ${alert.color}`}
@@ -116,7 +211,7 @@ const Insights = () => {
       <div className="bg-[#1a1f2e] rounded-lg p-6">
         <h2 className="text-xl font-semibold text-gray-100 mb-6">Weekly Progress Tracker</h2>
         <div className="space-y-6">
-          {weeklyProgress.map((item, index) => (
+          {progressItems.map((item, index) => (
             <div key={index}>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-300 text-sm">{item.label}</span>
@@ -168,7 +263,7 @@ const Insights = () => {
             ))}
           </div>
           <div className="mt-6 text-center">
-            <p className="text-3xl font-bold text-gray-100 mb-1">72/100</p>
+            <p className="text-3xl font-bold text-gray-100 mb-1">{`${balanceScore ?? 0}/100`}</p>
             <p className="text-gray-400 text-sm">Balance Score</p>
           </div>
         </div>
@@ -177,7 +272,7 @@ const Insights = () => {
         <div className="bg-[#1a1f2e] rounded-lg p-6">
           <h2 className="text-xl font-semibold text-gray-100 mb-6">Content Categories</h2>
           <div className="space-y-4">
-            {contentCategories.map((category, index) => (
+            {categoryItems.map((category, index) => (
               <div key={index}>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-gray-300 text-sm">{category.name}</span>
