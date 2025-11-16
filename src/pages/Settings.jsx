@@ -97,7 +97,7 @@ const Settings = () => {
         </div>
         
         {showAddWebsite && (
-          <div className="mb-6 flex gap-3">
+          <div className="mb-6 flex flex-col sm:flex-row gap-3">
             <input
               type="text"
               value={newWebsiteName}

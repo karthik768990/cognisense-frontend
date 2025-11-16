@@ -73,7 +73,7 @@ const Insights = () => {
       {/* Summary Cards */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-8">
         <h2 className="text-2xl font-bold text-gray-100 mb-6">Your Digital Footprint Summary</h2>
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
           <div>
             <p className="text-5xl font-bold text-gray-100 mb-2">72/100</p>
             <p className="text-blue-100">Overall Health Score</p>
@@ -90,7 +90,7 @@ const Insights = () => {
       </div>
 
       {/* Alerts Grid */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {alerts.map((alert, index) => (
           <div
             key={index}
@@ -134,7 +134,7 @@ const Insights = () => {
       </div>
 
       {/* Two Column Layout */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Emotional Balance */}
         <div className="bg-[#1a1f2e] rounded-lg p-6">
           <h2 className="text-xl font-semibold text-gray-100 mb-6">Emotional Balance</h2>

@@ -92,8 +92,8 @@ const Navbar = () => {
 
   return (
     <nav className={`bg-[${isDarkMode ? '#1a1f2e' : '#f9fafb'}] border-b border-gray-800`}>
-      <div className="max-w-[1400px] mx-auto px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 py-3 sm:h-16 sm:py-0">
           {/* Logo */}
           <div className="flex items-center gap-2">
             <Activity className="w-6 h-6 text-blue-500" />
@@ -101,7 +101,7 @@ const Navbar = () => {
           </div>
 
           {/* Navigation Links */}
-          <div className="flex gap-8">
+          <div className="flex flex-wrap gap-4 sm:gap-8 justify-center sm:justify-start">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -121,8 +121,8 @@ const Navbar = () => {
           </div>
 
           {/* Right side icons */}
-          <div className="flex items-center gap-4">
-            <select className="bg-[#2d3748] text-gray-300 p-5 text-sm rounded px-3 py-1.5 border border-gray-700 focus:outline-none focus:border-blue-500">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <select className="bg-[#2d3748] text-gray-300 text-sm rounded px-3 py-1.5 border border-gray-700 focus:outline-none focus:border-blue-500">
               <option>This Week</option>
               <option>This Month</option>
               <option>This Year</option>

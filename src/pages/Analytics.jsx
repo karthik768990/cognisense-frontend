@@ -114,7 +114,7 @@ const Analytics = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
           <div key={index} className="bg-[#1a1f2e] rounded-lg p-6">
             <p className="text-gray-400 text-sm mb-2">{stat.label}</p>

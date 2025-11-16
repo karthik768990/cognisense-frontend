@@ -34,7 +34,7 @@ function App() {
     <Router>
       <div className="min-h-screen bg-[#0f1419]">
         <Navbar />
-        <main className="max-w-[1400px] mx-auto px-8 py-8">
+        <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route
