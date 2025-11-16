@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+footprint-extension/dist
+footprint-extension/dist/
