@@ -21,29 +21,41 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Persist local events
 function persistEvent(event) {
+  // Log every event before persisting so we can inspect gathered data
+  console.log("[DigitalFootprint][EVENT_PERSIST]", event);
+
   chrome.storage.local.get({ events: [] }, (res) => {
     const events = res.events || [];
     const twoWeeks = Date.now() - 14 * 24 * 60 * 60 * 1000;
     const filtered = events.filter((e) => e.ts >= twoWeeks);
     filtered.push(event);
-    chrome.storage.local.set({ events: filtered });
+
+    chrome.storage.local.set({ events: filtered }, () => {
+      console.log("[DigitalFootprint][EVENTS_COUNT]", filtered.length);
+    });
   });
 }
 
 // Backend POST
 async function sendSessionToBackend(url, start, end) {
-  const duration = end - start;
+  // Convert duration to seconds before sending to backend
+  const duration = Math.round((end - start) / 1000);
+
+  const payload = {
+    url,
+    startTime: start,
+    endTime: end,
+    duration
+  };
+
+  // Log outbound session API call
+  console.log("[DigitalFootprint][SESSION_API] POST", SESSION_API, payload);
 
   try {
     await fetch(SESSION_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url,
-        startTime: start,
-        endTime: end,
-        duration
-      })
+      body: JSON.stringify(payload)
     });
   } catch (err) {
     console.warn("SESSION API ERROR", err);
@@ -51,11 +63,22 @@ async function sendSessionToBackend(url, start, end) {
 }
 
 async function sendHtmlToBackend(url, htmlText) {
+  const payload = { url, html: htmlText };
+
+  // Log outbound HTML API call
+  console.log("[DigitalFootprint][HTML_API] POST", HTML_API, {
+    url: payload.url,
+    // Avoid dumping huge HTML, just log length for debugging
+    htmlLength: payload.html?.length || 0
+  });
+
+  console.log("[DigitalFootprint][HTML_API][PAYLOAD]", HTML_API, payload);
+
   try {
     await fetch(HTML_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, html: htmlText })
+      body: JSON.stringify(payload)
     });
   } catch (err) {
     console.warn("HTML API ERROR", err);
@@ -89,6 +112,9 @@ async function stopActiveTimer() {
   const tabId = activeTabId;
   const url = activeUrl;
 
+  // Duration in seconds for local events as well
+  const durationSeconds = Math.round((end - activeStart) / 1000);
+
   const htmlText = await fetchPageText(tabId);
 
   sendSessionToBackend(url, activeStart, end);
@@ -97,7 +123,7 @@ async function stopActiveTimer() {
   persistEvent({
     type: "session_end",
     url,
-    duration: end - activeStart,
+    duration: durationSeconds,
     ts: end
   });
 

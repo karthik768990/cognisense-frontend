@@ -36,5 +36,5 @@
 
     "permissions": ["storage", "tabs", "activeTab", "scripting"],
 
-    "host_permissions": ["https://dummy.server.com/*"]
+    "host_permissions": ["<all_urls>"]
 }
