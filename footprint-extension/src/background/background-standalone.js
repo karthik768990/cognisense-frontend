@@ -626,7 +626,13 @@ let currentSession = {
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
-    Logger.info("Digital Footprint Tracker installed - initializing...");
+    Logger.info("🔧 Extension installed/updated - starting initialization...");
+    initializeStorage();
+});
+
+// Also initialize on startup
+chrome.runtime.onStartup.addListener(() => {
+    Logger.info("🚀 Extension startup - initializing...");
     initializeStorage();
 });
 
@@ -663,12 +669,21 @@ async function initializeStorage() {
             `Tracking state: ${isTrackingPaused ? "PAUSED" : "ACTIVE"}`
         );
 
-        // Test API connectivity
-        await testAPIConnectivity();
+        // Test API connectivity (non-blocking)
+        testAPIConnectivity().catch((error) => {
+            Logger.warn(
+                "API connectivity test failed, continuing without backend:",
+                error.message
+            );
+        });
 
-        // Fetch available categories
-        await fetchCategories();
-
+        // Fetch available categories (non-blocking)
+        fetchCategories().catch((error) => {
+            Logger.warn(
+                "Failed to fetch categories, using defaults:",
+                error.message
+            );
+        });
         startNewSession();
     } catch (error) {
         Logger.error("Error initializing storage:", error);
@@ -696,46 +711,83 @@ function startNewSession() {
 
 // Pause/Play functionality with enhanced logging
 async function pauseTracking() {
+    console.log(`⏸️ [BACKGROUND] PAUSE button clicked - stopping tracking`);
+    console.log(
+        `📊 [BACKGROUND] Current session time: ${Math.round(
+            currentSession.totalTime / 1000
+        )}s`
+    );
+
     isTrackingPaused = true;
     currentSession.isPaused = true;
-
-    Logger.info("⏸️ TRACKING PAUSED");
 
     // Save current tab time if active
     if (currentActiveTab && tabStartTime) {
         const timeSpent = Date.now() - tabStartTime;
-        Logger.info(
-            `Saving ${Math.round(
+        console.log(
+            `⏰ [BACKGROUND] Saving current tab time before pause: ${Math.round(
                 timeSpent / 1000
-            )}s for current tab before pausing`
+            )}s for ${currentActiveTab}`
         );
         await saveTabTime(currentActiveTab, timeSpent);
         tabStartTime = null;
+    } else {
+        console.log(`ℹ️ [BACKGROUND] No active tab time to save`);
     }
 
     await chrome.storage.local.set({ isTrackingPaused: true });
-    Logger.info("Pause state saved to storage");
+    console.log(`💾 [BACKGROUND] Pause state saved to storage`);
+    console.log(`✅ [BACKGROUND] TRACKING PAUSED SUCCESSFULLY`);
 }
 
 async function resumeTracking() {
+    console.log(`▶️ [BACKGROUND] RESUME button clicked - starting tracking`);
+
     isTrackingPaused = false;
     currentSession.isPaused = false;
 
-    Logger.info("▶️ TRACKING RESUMED");
-
     // Start timing current tab if any
-    if (currentActiveTab) {
-        tabStartTime = Date.now();
-        Logger.info(`Started timing for current tab: ${currentActiveTab}`);
+    try {
+        // Get the currently active tab
+        const tabs = await chrome.tabs.query({
+            active: true,
+            currentWindow: true,
+        });
+        if (tabs[0] && tabs[0].url) {
+            currentActiveTab = tabs[0].url;
+            tabStartTime = Date.now();
+            console.log(
+                `⏰ [BACKGROUND] Started timing for current tab after resume: ${currentActiveTab}`
+            );
+        } else if (currentActiveTab) {
+            tabStartTime = Date.now();
+            console.log(
+                `⏰ [BACKGROUND] Resumed timing for stored tab: ${currentActiveTab}`
+            );
+        } else {
+            console.log(`ℹ️ [BACKGROUND] No current tab to start timing`);
+        }
+    } catch (error) {
+        console.error(
+            `❌ [BACKGROUND] Error getting current tab on resume:`,
+            error
+        );
+        if (currentActiveTab) {
+            tabStartTime = Date.now();
+            console.log(
+                `⏰ [BACKGROUND] Resumed timing for stored tab: ${currentActiveTab}`
+            );
+        }
     }
 
     await chrome.storage.local.set({ isTrackingPaused: false });
-    Logger.info("Resume state saved to storage");
+    console.log(`💾 [BACKGROUND] Resume state saved to storage`);
+    console.log(`✅ [BACKGROUND] TRACKING RESUMED SUCCESSFULLY`);
 }
 
 // Save time spent on a tab with comprehensive logging
 async function saveTabTime(url, timeSpent) {
-    if (!url || isTrackingPaused || timeSpent < 1000) {
+    if (!url || timeSpent < 1000) {
         if (timeSpent < 1000) {
             Logger.info(
                 `Ignoring short session: ${Math.round(
@@ -839,6 +891,9 @@ async function sendToAPI(data) {
         // Log the API request
         Logger.api(endpoint, "POST", payload);
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
         const response = await fetch(fullUrl, {
             method: "POST",
             headers: {
@@ -846,7 +901,10 @@ async function sendToAPI(data) {
                 ...(API_TOKEN && { Authorization: `Bearer ${API_TOKEN}` }),
             },
             body: JSON.stringify(payload),
+            signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
             const responseData = await response.json();
@@ -859,13 +917,22 @@ async function sendToAPI(data) {
             }
         } else {
             const errorText = await response.text();
-            Logger.error(
+            Logger.warn(
                 `API request failed (${response.status}): ${response.statusText}`,
                 errorText
             );
         }
     } catch (error) {
-        Logger.error("Failed to send data to API:", error);
+        if (error.name === "AbortError") {
+            Logger.warn(
+                "API request timed out - continuing without backend sync"
+            );
+        } else {
+            Logger.warn(
+                "Failed to send data to API (extension will continue working):",
+                error.message
+            );
+        }
     }
 }
 
@@ -952,7 +1019,17 @@ async function testAPIConnectivity() {
 
         Logger.info("Testing API connectivity...");
 
-        const response = await fetch(fullUrl);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+        const response = await fetch(fullUrl, {
+            signal: controller.signal,
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
             const data = await response.json();
@@ -960,13 +1037,19 @@ async function testAPIConnectivity() {
             Logger.info("API connectivity test successful");
             return true;
         } else {
-            Logger.error(
+            Logger.warn(
                 `API connectivity test failed (${response.status}): ${response.statusText}`
             );
             return false;
         }
     } catch (error) {
-        Logger.error("API connectivity test failed:", error);
+        if (error.name === "AbortError") {
+            Logger.warn(
+                "API connectivity test timed out (backend may not be running)"
+            );
+        } else {
+            Logger.warn("API connectivity test failed:", error.message);
+        }
         return false;
     }
 }
@@ -1060,23 +1143,55 @@ async function getTodayStats() {
             );
         });
 
-        // Convert to array and sort
+        // Add current active time if we're timing a tab right now
+        if (currentActiveTab && tabStartTime && !isTrackingPaused) {
+            const currentActiveTime = Date.now() - tabStartTime;
+            totalTime += currentActiveTime;
+
+            // Add to the current domain's time
+            try {
+                const currentDomain = new URL(currentActiveTab).hostname;
+                if (!sitesMap[currentDomain]) {
+                    sitesMap[currentDomain] = {
+                        domain: currentDomain,
+                        totalTime: 0,
+                        visits: 0,
+                        category: categorizeUrl(currentActiveTab),
+                    };
+                }
+                sitesMap[currentDomain].totalTime += currentActiveTime;
+                Logger.info(
+                    `Adding current active time: ${Math.round(
+                        currentActiveTime / 1000
+                    )}s to ${currentDomain}`
+                );
+            } catch (e) {
+                Logger.error("Error adding current active time:", e);
+            }
+        }
+
+        // Convert to array and sort with null checks
         const topSites = Object.values(sitesMap)
-            .sort((a, b) => b.totalTime - a.totalTime)
-            .slice(0, 5);
+            .filter((site) => site && site.domain) // Filter out invalid entries
+            .sort((a, b) => (b.totalTime || 0) - (a.totalTime || 0))
+            .slice(0, 5)
+            .map((site) => ({
+                ...site,
+                totalTime: Math.max(0, Math.round(site.totalTime / 1000)), // Convert to seconds
+            }));
 
         return {
-            totalTime: Math.round(totalTime / 1000), // Convert to seconds
-            topSites,
-            isPaused: isTrackingPaused,
-            sessionCount: todaySessions.length,
+            totalTime: Math.max(0, Math.round(totalTime / 1000)), // Convert to seconds, ensure positive
+            topSites: topSites || [],
+            isPaused: Boolean(isTrackingPaused),
+            sessionCount: Math.max(0, todaySessions.length),
         };
     } catch (error) {
-        console.error("Error getting today stats:", error);
+        Logger.error("Error getting today stats:", error);
         return {
             totalTime: 0,
             topSites: [],
-            isPaused: isTrackingPaused,
+            isPaused: Boolean(isTrackingPaused),
             sessionCount: 0,
         };
     }
@@ -1084,36 +1199,90 @@ async function getTodayStats() {
 
 // Track tab navigation
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    console.log(`🔄 [BACKGROUND] Tab activated: ${activeInfo.tabId}`);
+
     try {
         const tab = await chrome.tabs.get(activeInfo.tabId);
+        console.log(`📱 [BACKGROUND] Active tab URL: ${tab.url}`);
+        console.log(
+            `⏸️ [BACKGROUND] Tracking state: ${
+                isTrackingPaused ? "PAUSED" : "ACTIVE"
+            }`
+        );
+
+        // Save time for previous tab if we were tracking one
+        if (currentActiveTab && tabStartTime && !isTrackingPaused) {
+            const timeSpent = Date.now() - tabStartTime;
+            console.log(
+                `⏰ [BACKGROUND] Tab switched: saving ${Math.round(
+                    timeSpent / 1000
+                )}s for ${currentActiveTab}`
+            );
+            await saveTabTime(currentActiveTab, timeSpent);
+        } else if (currentActiveTab && isTrackingPaused) {
+            console.log(
+                `⏸️ [BACKGROUND] Tracking paused - not saving time for: ${currentActiveTab}`
+            );
+        }
+
+        // Start tracking the new tab (if not paused)
+        currentActiveTab = tab.url;
+        if (!isTrackingPaused) {
+            tabStartTime = Date.now();
+            console.log(
+                `▶️ [BACKGROUND] Started timing for new active tab: ${tab.url}`
+            );
+        } else {
+            tabStartTime = null;
+            console.log(
+                `⏸️ [BACKGROUND] Tracking paused - not timing tab: ${tab.url}`
+            );
+        }
+
         await trackPageVisit(tab.url, tab.title);
     } catch (error) {
-        console.error("Error tracking tab activation:", error);
+        console.error(`❌ [BACKGROUND] Error tracking tab activation:`, error);
     }
 });
 
 // Track tab updates
 // Track tab updates
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    if (isTrackingPaused) return;
-
     if (changeInfo.status === "complete" && tab.url) {
         try {
-            // Save time for previous URL if it was different
+            // Save time for previous URL if it was different and we were timing it
             if (
                 currentActiveTab &&
                 currentActiveTab !== tab.url &&
-                tabStartTime
+                tabStartTime &&
+                !isTrackingPaused
             ) {
                 const timeSpent = Date.now() - tabStartTime;
+                Logger.info(
+                    `URL changed: saving ${Math.round(
+                        timeSpent / 1000
+                    )}s for ${currentActiveTab}`
+                );
                 await saveTabTime(currentActiveTab, timeSpent);
             }
 
             // Update current tab
             currentActiveTab = tab.url;
-            tabStartTime = Date.now();
+
+            // Start timing if not paused
+            if (!isTrackingPaused) {
+                tabStartTime = Date.now();
+                Logger.info(`Started timing for updated tab: ${tab.url}`);
+            } else {
+                tabStartTime = null;
+                Logger.info(
+                    `Tracking paused - not timing updated tab: ${tab.url}`
+                );
+            }
 
             await trackPageVisit(tab.url, tab.title);
+
+            // Request content analysis regardless of pause state
             await requestContentAnalysis(tabId);
         } catch (error) {
             console.error("Error tracking tab update:", error);
@@ -1130,8 +1299,15 @@ async function requestContentAnalysis(tabId) {
         if (
             !tab.url ||
             tab.url.startsWith("chrome://") ||
-            tab.url.startsWith("chrome-extension://")
+            tab.url.startsWith("chrome-extension://") ||
+            tab.url.startsWith("moz-extension://") ||
+            tab.url.startsWith("edge://") ||
+            tab.url === "about:blank" ||
+            tab.status !== "complete"
         ) {
+            Logger.info(
+                `Skipping content analysis for: ${tab.url || "unknown URL"}`
+            );
             return;
         }
 
@@ -1139,22 +1315,41 @@ async function requestContentAnalysis(tabId) {
         await chrome.scripting.executeScript({
             target: { tabId },
             func: () => {
-                // Send page content for analysis
-                const content = document.body.innerText || "";
-                const title = document.title || "";
+                try {
+                    // Send page content for analysis
+                    const content = document.body.innerText || "";
+                    const title = document.title || "";
 
-                chrome.runtime.sendMessage({
-                    type: "CONTENT_ANALYSIS",
-                    data: {
-                        content: content.substring(0, 5000), // Limit content size
-                        title,
-                        url: window.location.href,
-                    },
-                });
+                    if (content.trim().length > 0) {
+                        chrome.runtime.sendMessage({
+                            type: "CONTENT_ANALYSIS",
+                            data: {
+                                content: content.substring(0, 5000), // Limit content size
+                                title,
+                                url: window.location.href,
+                            },
+                        });
+                    }
+                } catch (injectionError) {
+                    console.warn(
+                        "Content analysis injection failed:",
+                        injectionError
+                    );
+                }
             },
         });
     } catch (error) {
-        console.error("Error requesting content analysis:", error);
+        // Check for specific Chrome extension errors
+        if (
+            error.message.includes("Frame with ID") ||
+            error.message.includes("error page") ||
+            error.message.includes("Cannot access") ||
+            error.message.includes("Extension context invalidated")
+        ) {
+            Logger.warn(`Cannot inject content script: ${error.message}`);
+        } else {
+            Logger.error("Error requesting content analysis:", error.message);
+        }
     }
 }
 
@@ -1162,22 +1357,34 @@ async function requestContentAnalysis(tabId) {
 async function trackPageVisit(url, title = "") {
     if (!url) return;
 
+    console.log(`🌐 [BACKGROUND] Tracking page visit: ${url}`);
+    console.log(`📝 [BACKGROUND] Page title: ${title || "No title"}`);
+
     try {
         const settings = await chrome.storage.sync.get([
             "trackingEnabled",
             "excludedSites",
         ]);
 
-        if (!settings.trackingEnabled) return;
+        if (!settings.trackingEnabled) {
+            console.log(`⏹️ [BACKGROUND] Tracking disabled - skipping: ${url}`);
+            return;
+        }
 
         // Check if site is excluded
         const isExcluded = settings.excludedSites?.some((excluded) =>
             url.includes(excluded)
         );
-        if (isExcluded) return;
+        if (isExcluded) {
+            console.log(`🚫 [BACKGROUND] Site excluded - skipping: ${url}`);
+            return;
+        }
 
         const domain = new URL(url).hostname;
         const timestamp = Date.now();
+        const category = categorizeUrl(url);
+
+        console.log(`🏷️ [BACKGROUND] Domain: ${domain}, Category: ${category}`);
 
         // Update session data
         if (!currentSession.sites[domain]) {
@@ -1187,27 +1394,53 @@ async function trackPageVisit(url, title = "") {
                 visits: 0,
                 timeSpent: 0,
                 lastVisit: timestamp,
-                category: categorizeUrl(url),
+                category: category,
             };
+            console.log(`✨ [BACKGROUND] New site added to session: ${domain}`);
         }
 
         currentSession.sites[domain].visits += 1;
         currentSession.sites[domain].lastVisit = timestamp;
+        currentSession.sites[domain].title = title; // Update title
+
+        console.log(
+            `📊 [BACKGROUND] Site stats - Visits: ${
+                currentSession.sites[domain].visits
+            }, Time: ${Math.round(
+                currentSession.sites[domain].timeSpent / 1000
+            )}s`
+        );
 
         // Update category tracking
-        const category = currentSession.sites[domain].category;
         currentSession.categories[category] =
             (currentSession.categories[category] || 0) + 1;
 
         // Store in persistent storage
         await updateStoredData();
+
+        console.log(`💾 [BACKGROUND] Session data updated for: ${domain}`);
     } catch (error) {
-        console.error("Error tracking page visit:", error);
+        console.error(
+            `❌ [BACKGROUND] Error tracking page visit for ${url}:`,
+            error
+        );
     }
 }
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+    console.log(`📨 [BACKGROUND] Message received:`, message);
+    // Validate message structure first
+    if (!message || typeof message !== "object" || !message.type) {
+        Logger.warn("Invalid message received:", message);
+        try {
+            sendResponse({ error: "Invalid message format" });
+        } catch (e) {
+            Logger.warn("Failed to send error response:", e.message);
+        }
+        return true;
+    }
+
     try {
         Logger.info(
             `📬 Received message: ${message.type}`,
@@ -1271,13 +1504,42 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
             }
 
             case "getTodayStats": {
-                const stats = await getTodayStats();
-                Logger.info(
-                    `📊 Stats requested - Total: ${Math.round(
-                        stats.totalTime / 1000
-                    )}s, Sites: ${stats.sites.length}`
-                );
-                sendResponse(stats);
+                try {
+                    const stats = await getTodayStats();
+
+                    // Validate stats object before accessing properties
+                    const validStats = {
+                        totalTime:
+                            typeof stats?.totalTime === "number"
+                                ? stats.totalTime
+                                : 0,
+                        topSites: Array.isArray(stats?.topSites)
+                            ? stats.topSites
+                            : [],
+                        isPaused:
+                            typeof stats?.isPaused === "boolean"
+                                ? stats.isPaused
+                                : false,
+                        sessionCount:
+                            typeof stats?.sessionCount === "number"
+                                ? stats.sessionCount
+                                : 0,
+                    };
+
+                    Logger.info(
+                        `📊 Stats requested - Total: ${validStats.totalTime}s, Sites: ${validStats.topSites.length}`
+                    );
+                    sendResponse(validStats);
+                } catch (statsError) {
+                    Logger.error("Error getting stats for popup:", statsError);
+                    const fallbackStats = {
+                        totalTime: 0,
+                        topSites: [],
+                        isPaused: Boolean(isTrackingPaused),
+                        sessionCount: 0,
+                    };
+                    sendResponse(fallbackStats);
+                }
                 break;
             }
 
@@ -1285,8 +1547,29 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
                 Logger.warn("Unknown message type:", message.type);
         }
     } catch (error) {
-        Logger.error("Error handling message:", error);
-        sendResponse({ error: error.message });
+        const errorMsg = error?.message || String(error);
+        Logger.error("Error handling message:", errorMsg);
+        try {
+            sendResponse({
+                error: errorMsg,
+                success: false,
+                // Provide safe defaults based on message type
+                ...(message?.type === "getTodayStats" && {
+                    totalTime: 0,
+                    topSites: [],
+                    isPaused: Boolean(isTrackingPaused),
+                    sessionCount: 0,
+                }),
+                ...(message?.type === "getStatus" && {
+                    paused: Boolean(isTrackingPaused),
+                }),
+            });
+        } catch (responseError) {
+            Logger.error(
+                "Failed to send error response:",
+                responseError?.message || responseError
+            );
+        }
     }
 
     return true; // Keep channel open for async response

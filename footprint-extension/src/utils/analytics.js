@@ -1,8 +1,23 @@
 // Time tracking and analytics utilities
 export function formatDuration(seconds) {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${Math.round((seconds / 3600) * 10) / 10}h`;
+    if (typeof seconds !== "number" || seconds < 0) return "0s";
+
+    if (seconds < 60) {
+        return `${Math.round(seconds)}s`;
+    } else if (seconds < 3600) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.round(seconds % 60);
+        return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = Math.round(seconds % 60);
+
+        let result = `${hours}h`;
+        if (mins > 0) result += ` ${mins}m`;
+        if (secs > 0 && hours === 0) result += ` ${secs}s`; // Only show seconds if less than an hour
+        return result;
+    }
 }
 
 export function getTimeOfDay(timestamp) {
