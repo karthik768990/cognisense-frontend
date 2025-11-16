@@ -99,7 +99,7 @@ const Popup = () => {
 
   const openDashboard = () => {
     if (!isChrome) {
-      // dev fallback: open a local page or external dashboard
+      // TODO  dev fallback: open a local page or external dashboard
       window.open("https://example.com/your-dashboard", "_blank");
       return;
     }
